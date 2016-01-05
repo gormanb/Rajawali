@@ -120,7 +120,7 @@ public class BoundingBox implements IBoundingVolume {
 				mTransformedMin.z + (mTransformedMax.z - mTransformedMin.z) * .5
 				);
 		
-		mVisualBox.render(camera, vpMatrix, projMatrix, vMatrix, mTmpMatrix, null);
+		mVisualBox.render(camera, vpMatrix, projMatrix, vMatrix, mMatrix, null);
 	}
 	
 	public Object3D getVisual() {
