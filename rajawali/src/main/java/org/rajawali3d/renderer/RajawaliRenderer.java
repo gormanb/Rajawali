@@ -45,11 +45,10 @@ import org.rajawali3d.util.RawShaderLoader;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -160,9 +159,9 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
         mContext = context;
         RawShaderLoader.mContext = new WeakReference<>(context);
         mFrameRate = getRefreshRate();
-        mScenes = Collections.synchronizedList(new CopyOnWriteArrayList<RajawaliScene>());
-        mRenderTargets = Collections.synchronizedList(new CopyOnWriteArrayList<RenderTarget>());
-        mFrameTaskQueue = new LinkedList<>();
+        mScenes = new CopyOnWriteArrayList<RajawaliScene>();
+        mRenderTargets = new CopyOnWriteArrayList<RenderTarget>();
+        mFrameTaskQueue = new ConcurrentLinkedQueue<AFrameTask>();
 
         mSceneCachingEnabled = true;
         mSceneInitialized = false;
@@ -222,11 +221,8 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
     @Override
     public void setAntiAliasingMode(IRajawaliSurface.ANTI_ALIASING_CONFIG config) {
         mAntiAliasingConfig = config;
-        synchronized (mScenes) {
-            for (int i = 0, j = mScenes.size(); i < j; ++i) {
-                mScenes.get(i).setAntiAliasingConfig(config);
-            }
-        }
+        for (RajawaliScene scene : mScenes)
+            scene.setAntiAliasingConfig(config);
     }
 
     @Override
@@ -296,15 +292,14 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
     public void onRenderSurfaceCreated(EGLConfig config, GL10 gl, int width, int height) {
         Capabilities.getInstance();
 
-        String[] versionString = (GLES20.glGetString(GLES20.GL_VERSION)).split(" ");
+        String[] versionParts = (GLES20.glGetString(GLES20.GL_VERSION)).split("[^0-9]+");
         RajLog.d("Open GL ES Version String: " + GLES20.glGetString(GLES20.GL_VERSION));
-        if (versionString.length >= 3) {
-            String[] versionParts = versionString[2].split("\\.");
-            if (versionParts.length >= 2) {
-                mGLES_Major_Version = Integer.parseInt(versionParts[0]);
-                versionParts[1] = versionParts[1].replaceAll("([^0-9].+)", "");
-                mGLES_Minor_Version = Integer.parseInt(versionParts[1]);
-            }
+        if (versionParts.length >= 3) {
+        	if(versionParts[1].length() > 0 && versionParts[2].length() > 0) {
+            	// versionParts[0] is empty due to .split removal
+	            mGLES_Major_Version = Integer.parseInt(versionParts[1]);
+	            mGLES_Minor_Version = Integer.parseInt(versionParts[2]);
+        	}
         }
         RajLog.d(String.format(Locale.US, "Derived GL ES Version: %d.%d", mGLES_Major_Version, mGLES_Minor_Version));
 
@@ -319,18 +314,18 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
     @Override
     public void onRenderSurfaceDestroyed(SurfaceTexture surface) {
         stopRendering();
-        synchronized (mScenes) {
-            if (mTextureManager != null) {
-                mTextureManager.unregisterRenderer(this);
-                mTextureManager.taskReset(this);
-            }
-            if (mMaterialManager != null) {
-                mMaterialManager.taskReset(this);
-                mMaterialManager.unregisterRenderer(this);
-            }
-            for (int i = 0, j = mScenes.size(); i < j; ++i)
-                mScenes.get(i).destroyScene();
+
+        if (mTextureManager != null) {
+            mTextureManager.unregisterRenderer(this);
+            mTextureManager.taskReset(this);
         }
+        if (mMaterialManager != null) {
+            mMaterialManager.taskReset(this);
+            mMaterialManager.unregisterRenderer(this);
+        }
+
+        for (RajawaliScene scene : mScenes)
+            scene.destroyScene();
     }
 
     @Override
@@ -353,10 +348,10 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
             mMaterialManager.reset();
             clearScenes();
         } else if (mSceneCachingEnabled && mSceneInitialized) {
-            for (int i = 0, j = mRenderTargets.size(); i < j; ++i) {
-                if (mRenderTargets.get(i).getFullscreen()) {
-                    mRenderTargets.get(i).setWidth(mDefaultViewportWidth);
-                    mRenderTargets.get(i).setHeight(mDefaultViewportHeight);
+            for (RenderTarget target : mRenderTargets) {
+                if (target.getFullscreen()) {
+                	target.setWidth(mDefaultViewportWidth);
+                	target.setHeight(mDefaultViewportHeight);
                 }
             }
             mTextureManager.taskReload();
@@ -371,12 +366,15 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
     @Override
     public void onRenderFrame(GL10 gl) {
         performFrameTasks(); //Execute any pending frame tasks
-        synchronized (mNextSceneLock) {
-            //Check if we need to switch the scene, and if so, do it.
-            if (mNextScene != null) {
-                switchSceneDirect(mNextScene);
-                mNextScene = null;
-            }
+
+        if(mNextScene != null) {
+	        synchronized (mNextSceneLock) {
+	            //Check if we need to switch the scene, and if so, do it.
+	            if (mNextScene != null) {
+	                switchSceneDirect(mNextScene);
+	                mNextScene = null;
+	            }
+	        }
         }
 
         final long currentTime = System.nanoTime();
@@ -972,18 +970,13 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
      * Called to reload the scenes.
      */
     protected void reloadScenes() {
-        synchronized (mScenes) {
-            for (int i = 0, j = mScenes.size(); i < j; ++i) {
-                mScenes.get(i).reload();
-            }
-        }
+        for (RajawaliScene scene : mScenes)
+            scene.reload();
     }
 
     protected void reloadRenderTargets() {
-        synchronized (mRenderTargets) {
-            for (int i = 0, j = mRenderTargets.size(); i < j; ++i) {
-                mRenderTargets.get(i).reload();
-            }
+        for (RenderTarget target : mRenderTargets) {
+            target.reload();
         }
     }
 
@@ -998,21 +991,14 @@ public abstract class RajawaliRenderer implements IRajawaliSurfaceRenderer {
     }
 
     protected boolean internalOfferTask(AFrameTask task) {
-        synchronized (mFrameTaskQueue) {
-            return mFrameTaskQueue.offer(task);
-        }
+        return mFrameTaskQueue.offer(task);
     }
 
     protected void performFrameTasks() {
-        synchronized (mFrameTaskQueue) {
-            //Fetch the first task
-            AFrameTask task = mFrameTaskQueue.poll();
-            while (task != null) {
-                task.run();
-                //Retrieve the next task
-                task = mFrameTaskQueue.poll();
-            }
-        }
+        AFrameTask task = null;
+
+        while ((task = mFrameTaskQueue.poll()) != null)
+            task.run();
     }
 
     private class RequestRenderTask implements Runnable {
