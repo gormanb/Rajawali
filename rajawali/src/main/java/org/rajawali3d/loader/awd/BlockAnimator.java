@@ -171,10 +171,9 @@ public class BlockAnimator extends ABlockParser {
 			}
 
 			obj.setAnimationSequences(skelAnims);
-			obj.setAnimationSequence(mActive);
 
 			if(mAutoPlay)
-				obj.play(true);
+				obj.play(mActive, true);
 		}
 	}
 
