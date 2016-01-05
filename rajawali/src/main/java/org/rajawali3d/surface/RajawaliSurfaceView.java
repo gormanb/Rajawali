@@ -75,7 +75,7 @@ public class RajawaliSurfaceView extends GLSurfaceView implements IRajawaliSurfa
         array.recycle();
     }
 
-    private void initialize() {
+    protected void initialize() {
         final int glesMajorVersion = Capabilities.getGLESMajorVersion();
         setEGLContextClientVersion(glesMajorVersion);
 
