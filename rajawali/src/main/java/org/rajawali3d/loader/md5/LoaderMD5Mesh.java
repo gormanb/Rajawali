@@ -13,9 +13,11 @@
 package org.rajawali3d.loader.md5;
 
 import android.content.res.Resources;
+import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.InputStream;
@@ -70,6 +72,10 @@ public class LoaderMD5Mesh extends AMeshLoader implements IAnimatedMeshLoader {
 
 	public double[] mBindPoseMatrix;
 	public double[][] mInverseBindPoseMatrix;
+
+	public LoaderMD5Mesh(RajawaliRenderer renderer, File file) {
+		super(renderer, file);
+	}
 
 	public LoaderMD5Mesh(RajawaliRenderer renderer, String fileOnSDCard) {
 		super(renderer, fileOnSDCard);
@@ -221,9 +227,6 @@ public class LoaderMD5Mesh extends AMeshLoader implements IAnimatedMeshLoader {
 					if (lastDelim > -1)
 						mesh.textureName = shader.substring(lastDelim + 1, shader.length());
 
-					int dot = shader.lastIndexOf(".");
-					if (dot > -1)
-						mesh.textureName = shader.substring(0, dot);
 				} else if (type.equalsIgnoreCase(NUM_VERTS)) {
 					mesh.numVertices = Integer.parseInt(parts.nextToken());
 					mesh.boneVertices = new BoneVertex[mesh.numVertices];
@@ -406,7 +409,7 @@ public class LoaderMD5Mesh extends AMeshLoader implements IAnimatedMeshLoader {
 			Matrix.invertM(inverseBoneMatrix, 0, boneMatrix, 0);
 
 			for (int j = 0; j < 16; j++) {
-				mBindPoseMatrix[i + j] = boneMatrix[j];
+				mBindPoseMatrix[i*16 + j] = boneMatrix[j];
 			}
 			mInverseBindPoseMatrix[i] = inverseBoneMatrix;
 		}
@@ -418,6 +421,9 @@ public class LoaderMD5Mesh extends AMeshLoader implements IAnimatedMeshLoader {
 		root.mInverseBindPoseMatrix = mInverseBindPoseMatrix;
 		root.setJoints(mJoints);
 		mRootObject = root;
+
+		LoaderMD5Material matLib = new LoaderMD5Material();
+
 		for (int i = 0; i < mNumMeshes; ++i) {
 			SkeletonMeshData mesh = mMeshes[i];
 			SkeletalAnimationChildObject3D o = new SkeletalAnimationChildObject3D();
@@ -438,25 +444,61 @@ public class LoaderMD5Mesh extends AMeshLoader implements IAnimatedMeshLoader {
 
 			Material mat = new Material();
 			mat.addPlugin(new SkeletalAnimationMaterialPlugin(mNumJoints, mesh.maxBoneWeightsPerVertex));
-			mat.enableLighting(true);
-			mat.setDiffuseMethod(new DiffuseMethod.Lambert());
-			o.setMaterial(mat);
-			if (!hasTexture) {
-				o.setColor(0xff000000 + (int) (Math.random() * 0xffffff));
-			} else {
-				int identifier = mResources.getIdentifier(mesh.textureName, "drawable",
-						mResources.getResourcePackageName(mResourceId));
-				if (identifier == 0) {
-					throw new ParsingException("Couldn't find texture " + mesh.textureName);
-				}
-				mat.setColorInfluence(0);
-				mat.addTexture(new Texture("md5tex" + i, identifier));
+
+			if(hasTexture && mFile != null && mesh.textureName.endsWith("mtr"))
+			{
+				File mtrFile = new File(mFile.getParentFile(), mesh.textureName);
+				matLib.parse(mat, mtrFile);
 			}
+			else
+			{
+				if (!hasTexture)
+					o.setColor(0xff000000 + (int) (Math.random() * 0xffffff));
+				else
+				{
+					Texture tex = loadTexture(mesh.textureName, i);
+
+					if (tex == null) {
+	 					throw new ParsingException("Couldn't find texture " + mesh.textureName);
+	 				}
+
+					mat.setColorInfluence(0);
+					mat.addTexture(tex);
+				}
+
+				mat.setDiffuseMethod(new DiffuseMethod.Lambert());
+				mat.enableLighting(true);
+			}
+
+			o.setMaterial(mat);
+
 			mRootObject.addChild(o);
-			
+
 			mesh.destroy();
 			mesh = null;
 		}
+	}
+
+	private Texture loadTexture(String texName, int meshNum)
+	{
+		if(mFile != null)
+		{
+			File texFile = new File(mFile.getParentFile(), texName);
+
+			return (texFile.exists() ? new Texture("md5tex" + meshNum,
+				BitmapFactory.decodeFile(texFile.getAbsolutePath())) : null);
+		}
+
+		int dot = texName.lastIndexOf(".");
+
+		if (dot > -1)
+			texName = texName.substring(0, dot);
+
+		int identifier =
+			mResources.getIdentifier(texName, "drawable",
+				mResources.getResourcePackageName(mResourceId));
+
+		return (identifier == 0 ? null : new Texture("md5tex" + meshNum, identifier));
 	}
 
 	private class SkeletonMeshData {

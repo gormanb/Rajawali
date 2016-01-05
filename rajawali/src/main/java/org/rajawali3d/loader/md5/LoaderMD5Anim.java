@@ -13,6 +13,7 @@
 package org.rajawali3d.loader.md5;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.InputStream;
@@ -50,7 +51,13 @@ public class LoaderMD5Anim extends ALoader implements IAnimationSequenceLoader {
 	private SkeletonJoint[] mJoints;
 	private int mNumJoints;
 	private int mNumAnimatedComponents;
-	
+
+	public LoaderMD5Anim(String animationName, RajawaliRenderer renderer, File file)
+	{
+		super(renderer, file);
+		mAnimationName = animationName;
+	}
+
 	public LoaderMD5Anim(String animationName, RajawaliRenderer renderer, String fileOnSDCard)
 	{
 		super(renderer, fileOnSDCard);
