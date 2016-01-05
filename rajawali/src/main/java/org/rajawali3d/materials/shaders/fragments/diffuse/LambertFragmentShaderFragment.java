@@ -27,9 +27,11 @@ public class LambertFragmentShaderFragment extends AShader implements IShaderFra
 	
 	private List<ALight> mLights;
 	private RFloat[] mgNdotL;
+	private float mIntensity;
 	
-	public LambertFragmentShaderFragment(List<ALight> lights) {
+	public LambertFragmentShaderFragment(List<ALight> lights, float intensity) {
 		super(ShaderType.FRAGMENT_SHADER_FRAGMENT);
+		mIntensity = intensity;
 		mLights = lights;
 		initialize();
 	}
@@ -78,7 +80,7 @@ public class LambertFragmentShaderFragment extends AShader implements IShaderFra
 			//
 			// -- diffuse.rgb += uLightColor * power;
 			//
-			diffuse.assignAdd(lightColor.multiply(power));
+			diffuse.assignAdd(lightColor.multiply(power).multiply(mIntensity));
 		}
 		RVec4 color = (RVec4) getGlobal(DefaultShaderVar.G_COLOR);
 		RVec3 ambientColor = (RVec3) getGlobal(LightsShaderVar.V_AMBIENT_COLOR);

@@ -121,7 +121,7 @@ public abstract class DiffuseMethod {
 		
 		public IShaderFragment getFragmentShaderFragment()
 		{
-			return new LambertFragmentShaderFragment(mLights);
+			return new LambertFragmentShaderFragment(mLights, mIntensity);
 		}
 		
 		public void setLights(List<ALight> lights)
