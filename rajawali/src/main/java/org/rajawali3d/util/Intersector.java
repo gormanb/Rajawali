@@ -12,6 +12,7 @@
  */
 package org.rajawali3d.util;
 
+import org.rajawali3d.bounds.BoundingBox;
 import org.rajawali3d.math.Plane;
 import org.rajawali3d.math.vector.Vector3;
 
@@ -27,7 +28,11 @@ public final class Intersector {
 	private final static Vector3 v0 = new Vector3();
 	private final static Vector3 v1 = new Vector3();
 	private final static Vector3 v2 = new Vector3();
-	
+
+	// for ray-box intersection
+	private final static int
+		QUAD_LEFT = 0, QUAD_RIGHT = 1, QUAD_MIDDLE = 2;
+
 	/**
 	 * Intersects a ray defined by a start and end point and a {@link Plane}.
 	 * @param rayStart Startpoint of the ray
@@ -158,5 +163,95 @@ public final class Intersector {
 			hitPoint = rayStart.add(Vector3.scaleAndCreate(dir, t0));
 			return true;
 		}
+	}
+
+	/* Woo's algorithm (1990): taken from http://goo.gl/bx7wt9 */
+	public static boolean intersectRayBox(BoundingBox bbox, Vector3 rayStart, Vector3 rayEnd, Vector3 hitPoint)
+	{
+		Vector3 dirvector = Vector3.subtractAndCreate(rayEnd, rayStart);
+		double rayLength = dirvector.normalize();
+
+		boolean inside = true;
+		int whichPlane = 0;
+
+		double[]	origin = rayStart.toArray(),
+					dir = dirvector.toArray(),
+					minB = bbox.getTransformedMin().toArray(),
+					maxB = bbox.getTransformedMax().toArray();
+
+		double[]	coord = new double[origin.length],
+					maxT = new double[origin.length],
+					candidatePlane = new double[origin.length],
+					quadrant = new double[origin.length];
+
+		/* Find candidate planes; this loop can be avoided if
+		 * rays cast all from the eye (assume perpsective view) */
+		for(int i = 0; i < origin.length; i++)
+		{
+			if(origin[i] < minB[i])
+			{
+				quadrant[i] = QUAD_LEFT;
+				candidatePlane[i] = minB[i];
+				inside = false;
+			}
+			else if (origin[i] > maxB[i])
+			{
+				quadrant[i] = QUAD_RIGHT;
+				candidatePlane[i] = maxB[i];
+				inside = false;
+			}
+			else
+				quadrant[i] = QUAD_MIDDLE;
+		}
+
+		/* Ray origin inside bounding box */
+		if(inside)
+		{
+			hitPoint.setAll(rayStart);
+			return true;
+		}
+
+		/* Calculate T distances to candidate planes */
+		for(int i = 0; i < quadrant.length; i++)
+		{
+			if(quadrant[i] != QUAD_MIDDLE && dir[i] != 0)
+				maxT[i] = (candidatePlane[i]-origin[i]) / dir[i];
+			else
+				maxT[i] = -1;
+		}
+
+		/* Get largest of the maxTs for final choice of intersection */
+		for(int i = 1; i < maxT.length; i++)
+		{
+			if (maxT[whichPlane] < maxT[i])
+				whichPlane = i;
+		}
+
+		/* Check final candidate actually inside box */
+		if (maxT[whichPlane] < 0)
+			return false;
+
+		for(int i = 0; i < origin.length; i++)
+		{
+			if (whichPlane != i) 
+			{
+				coord[i] = origin[i] + maxT[whichPlane] *dir[i];
+
+				if (coord[i] < minB[i] || coord[i] > maxB[i])
+					return false;
+			}
+			else
+				coord[i] = candidatePlane[i];
+		}
+
+		Vector3 intersect = new Vector3(coord);
+
+		// check if intersect falls on given line segment
+		if(rayLength < rayStart.distanceTo(intersect))
+			return false;
+
+		hitPoint.setAll(intersect);
+
+		return true;
 	}
 }
