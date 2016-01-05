@@ -123,7 +123,7 @@ public class LoaderMD2 extends AMeshLoader implements IAnimatedMeshLoader {
 			mObject.setColor(0xffffffff);
 			if (mTexture != null)
 			{
-				material.addTexture(new Texture(mCurrentTextureName, mTexture));
+				material.addTexture(new Texture(mCurrentTextureName.replaceAll("\\W", ""), mTexture));
 				material.setColorInfluence(0);
 			}
 			stream.close();
@@ -143,19 +143,10 @@ public class LoaderMD2 extends AMeshLoader implements IAnimatedMeshLoader {
 		LittleEndianDataInputStream is = new LittleEndianDataInputStream(ba);
 
 		for (int i = 0; i < mHeader.numSkins; i++) {
-			String skinPath = is.readString(64);
+			String skinPath = is.readString(64).trim();
 
-			skinPath = skinPath.substring(skinPath.lastIndexOf("/") + 1,
-					skinPath.length());
-			StringBuffer textureName = new StringBuffer(skinPath.toLowerCase(Locale.ENGLISH));
-			mCurrentTextureName = textureName.toString().trim();
-			if (mFile != null)
-				continue;
-			int dotIndex = textureName.lastIndexOf(".");
-			if (dotIndex > -1)
-				textureName = new StringBuffer(textureName.substring(0, dotIndex));
-
-			mCurrentTextureName = textureName.toString();
+			mCurrentTextureName = (mFile != null ?
+				getOnlyFileName(skinPath) : getFileNameWithoutExtension(skinPath));
 		}
 		is.close();
 		if (mFile == null) {
@@ -169,8 +160,8 @@ public class LoaderMD2 extends AMeshLoader implements IAnimatedMeshLoader {
 			mTexture = BitmapFactory.decodeResource(mResources, identifier);
 		} else {
 			try {
-				String filePath = mFile.getParent() + File.separatorChar + mCurrentTextureName;
-				mTexture = BitmapFactory.decodeFile(filePath);
+				File file = new File(mFile.getParent(), mCurrentTextureName);
+				mTexture = BitmapFactory.decodeFile(file.getAbsolutePath());
 			} catch (Exception e) {
 				RajLog.e("[" + getClass().getCanonicalName() + "] Could not find file " + mCurrentTextureName);
 				e.printStackTrace();
