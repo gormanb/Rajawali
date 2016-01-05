@@ -50,6 +50,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -130,7 +132,7 @@ public class RajawaliScene {
 	 * 
 	 * Guarded by itself
 	 */
-	private final LinkedList<AFrameTask> mFrameTaskQueue;
+	private final ConcurrentLinkedQueue<AFrameTask> mFrameTaskQueue;
 
 	protected boolean mDisplaySceneGraph = false;
 	protected IGraphNode mSceneGraph; //The scenegraph for this scene
@@ -139,15 +141,15 @@ public class RajawaliScene {
 	public RajawaliScene(RajawaliRenderer renderer) {
 		mRenderer = renderer;
 		mAlpha = 0;
-		mAnimations = Collections.synchronizedList(new CopyOnWriteArrayList<Animation>());
-        mPreCallbacks = Collections.synchronizedList(new CopyOnWriteArrayList<ASceneFrameCallback>());
-        mPreDrawCallbacks = Collections.synchronizedList(new CopyOnWriteArrayList<ASceneFrameCallback>());
-        mPostCallbacks = Collections.synchronizedList(new CopyOnWriteArrayList<ASceneFrameCallback>());
-		mChildren = Collections.synchronizedList(new CopyOnWriteArrayList<Object3D>());
-		mPlugins = Collections.synchronizedList(new CopyOnWriteArrayList<IRendererPlugin>());
-		mCameras = Collections.synchronizedList(new CopyOnWriteArrayList<Camera>());
-		mLights = Collections.synchronizedList(new CopyOnWriteArrayList<ALight>());
-		mFrameTaskQueue = new LinkedList<>();
+		mAnimations = new CopyOnWriteArrayList<Animation>();
+        mPreCallbacks = new CopyOnWriteArrayList<ASceneFrameCallback>();
+        mPreDrawCallbacks = new CopyOnWriteArrayList<ASceneFrameCallback>();
+        mPostCallbacks = new CopyOnWriteArrayList<ASceneFrameCallback>();
+		mChildren = new CopyOnWriteArrayList<Object3D>();
+		mPlugins = new CopyOnWriteArrayList<IRendererPlugin>();
+		mCameras = new CopyOnWriteArrayList<Camera>();
+		mLights = new CopyOnWriteArrayList<ALight>();
+		mFrameTaskQueue = new ConcurrentLinkedQueue<AFrameTask>();
 		
 		mCamera = new Camera();
 		mCamera.setZ(mEyeZ);
@@ -431,6 +433,8 @@ public class RajawaliScene {
                     //mSceneGraph.removeObject(old);
                     //mSceneGraph.addObject(child); //TODO: Uncomment
                 }
+
+                updateChildMaterialWithLights(child);
             }
         };
         return internalOfferTask(task);
@@ -452,6 +456,8 @@ public class RajawaliScene {
                     //mSceneGraph.removeObject(oldChild);
                     //mSceneGraph.addObject(newChild); //TODO: Uncomment
                 }
+
+                updateChildMaterialWithLights(newChild);
             }
         };
         return internalOfferTask(task);
@@ -494,6 +500,8 @@ public class RajawaliScene {
                 if (mSceneGraph != null) {
                     //mSceneGraph.addObject(child); //TODO: Uncomment
                 }
+
+                updateChildMaterialWithLights(child);
             }
         };
         return internalOfferTask(task);
@@ -513,6 +521,9 @@ public class RajawaliScene {
                 if (mSceneGraph != null) {
                     //mSceneGraph.addObject(child); //TODO: Uncomment
                 }
+
+                for(Object3D child : children)
+                	updateChildMaterialWithLights(child);
             }
         };
         return internalOfferTask(task);
@@ -824,10 +835,9 @@ public class RajawaliScene {
 	 * @throws TextureException 
 	 */
 	public void setSkybox(int resourceId) throws TextureException {
-		synchronized (mCameras) {
-			for (int i = 0, j = mCameras.size(); i < j; ++i)
-				mCameras.get(i).setFarPlane(1000);
-		}
+		for (Camera camera : mCameras)
+			camera.setFarPlane(1000);
+
 		synchronized (mNextSkyboxLock) {
 			mNextSkybox = new Cube(700, true, false);
 			mNextSkybox.setDoubleSided(true);
@@ -851,10 +861,9 @@ public class RajawaliScene {
 	 * @throws TextureException 
 	 */
 	public void setSkybox(int posx, int negx, int posy, int negy, int posz, int negz) throws TextureException {
-		synchronized (mCameras) {
-			for (int i = 0, j = mCameras.size(); i < j; ++i)
-				mCameras.get(i).setFarPlane(1000);
-		}
+		for (Camera camera : mCameras)
+			camera.setFarPlane(1000);
+
 		synchronized (mNextSkyboxLock) {
 			mNextSkybox = new Cube(700, true);
 			int[] resourceIds = new int[] { posx, negx, posy, negy, posz, negz };
@@ -874,10 +883,9 @@ public class RajawaliScene {
      * @param bitmaps {@link Bitmap} array containing the cube map textures.
      */
     public void setSkybox(Bitmap[] bitmaps) {
-        synchronized (mCameras) {
-            for (int i = 0, j = mCameras.size(); i < j; ++i)
-                mCameras.get(i).setFarPlane(1000);
-        }
+        for (Camera camera : mCameras)
+            camera.setFarPlane(1000);
+
         final Cube skybox = new Cube(700, true);
         final CubeMapTexture texture = new CubeMapTexture("bitmap_skybox", bitmaps);
         texture.isSkyTexture(true);
@@ -889,7 +897,7 @@ public class RajawaliScene {
             RajLog.e(e.getMessage());
         }
         skybox.setMaterial(material);
-        synchronized (mNextCameraLock) {
+        synchronized (mNextSkyboxLock) {
             mNextSkybox = skybox;
         }
     }
@@ -974,39 +982,44 @@ public class RajawaliScene {
 	public void render(long ellapsedTime, double deltaTime, RenderTarget renderTarget, Material sceneMaterial) {
 		performFrameTasks(); //Handle the task queue
 
-        synchronized (mFrameTaskQueue) {
-            if (mLightsDirty) {
-                updateMaterialsWithLights();
-                mLightsDirty = false;
-            }
+        if (mLightsDirty) {
+            updateMaterialsWithLights();
+            mLightsDirty = false;
         }
 
-		synchronized (mNextSkyboxLock) {
-			//Check if we need to switch the skybox, and if so, do it.
-			if (mNextSkybox != null) {
-				mSkybox = mNextSkybox;
-				mNextSkybox = null;
+        if(mNextSkybox != null)
+        {
+			synchronized (mNextSkyboxLock) {
+				//Check if we need to switch the skybox, and if so, do it.
+				if (mNextSkybox != null) {
+					mSkybox = mNextSkybox;
+					mNextSkybox = null;
+				}
 			}
-		}
-		synchronized (mNextCameraLock) { 
-			//Check if we need to switch the camera, and if so, do it.
-			if (mNextCamera != null) {
-				mCamera = mNextCamera;
-                mCamera.setProjectionMatrix(mRenderer.getViewportWidth(), mRenderer.getDefaultViewportHeight());
-				mNextCamera = null;
+        }
+
+        if(mNextCamera != null)
+        {
+			synchronized (mNextCameraLock) { 
+				//Check if we need to switch the camera, and if so, do it.
+				if (mNextCamera != null) {
+					mCamera = mNextCamera;
+	                mCamera.setProjectionMatrix(mRenderer.getViewportWidth(), mRenderer.getDefaultViewportHeight());
+					mNextCamera = null;
+				}
 			}
-		}
-		
-		int clearMask = mAlwaysClearColorBuffer? GLES20.GL_COLOR_BUFFER_BIT : 0;
+        }
+
+		int clearMask = (mAlwaysClearColorBuffer || mPickerInfo != null) ? GLES20.GL_COLOR_BUFFER_BIT : 0;
 
 		ColorPickerInfo pickerInfo = mPickerInfo;
 		
-		if (renderTarget != null) {
-			renderTarget.bind();
-			GLES20.glClearColor(mRed, mGreen, mBlue, mAlpha);
-		} else if (pickerInfo != null) {
+		if (pickerInfo != null) {
 			pickerInfo.getPicker().getRenderTarget().bind();
 			GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		} else if (renderTarget != null) {
+			renderTarget.bind();
+			GLES20.glClearColor(mRed, mGreen, mBlue, mAlpha);
 		} else {
 //			GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
 			GLES20.glClearColor(mRed, mGreen, mBlue, mAlpha);
@@ -1027,22 +1040,16 @@ public class RajawaliScene {
 
         // Execute pre-frame callbacks
         // We explicitly break out the steps here to help the compiler optimize
-        final int preCount = mPreCallbacks.size();
-        if (preCount > 0) {
-            synchronized (mPreCallbacks) {
-                for (int i = 0; i < preCount; ++i) {
-                    mPreCallbacks.get(i).onPreFrame(ellapsedTime, deltaTime);
-                }
+        if (!mPreCallbacks.isEmpty()) {
+            for (ASceneFrameCallback callback : mPreCallbacks) {
+                callback.onPreFrame(ellapsedTime, deltaTime);
             }
         }
 
         // Update all registered animations
-        synchronized (mAnimations) {
-            for (int i = 0, j = mAnimations.size(); i < j; ++i) {
-                Animation anim = mAnimations.get(i);
-                if (anim.isPlaying())
-                    anim.update(deltaTime);
-            }
+        for (Animation anim : mAnimations) {
+            if (anim.isPlaying())
+                anim.update(deltaTime);
         }
 
         // We are beginning the render process so we need to update the camera matrix before fetching its values
@@ -1057,22 +1064,15 @@ public class RajawaliScene {
         mCamera.updateFrustum(mInvVPMatrix); // Update frustum plane
 
         // Update the model matrices of all the lights
-        synchronized (mLights) {
-            final int numLights = mLights.size();
-            for (int i = 0; i < numLights; ++i) {
-                mLights.get(i).onRecalculateModelMatrix(null);
-            }
+        for (ALight light : mLights) {
+            light.onRecalculateModelMatrix(null);
         }
 
         // Execute pre-frame callbacks
         // We explicitly break out the steps here to help the compiler optimize
-        final int preRenderCount = mPreDrawCallbacks.size();
-        if (preRenderCount > 0) {
-            synchronized (mPreDrawCallbacks) {
-                for (int i = 0; i < preCount; ++i) {
-                    mPreDrawCallbacks.get(i).onPreDraw(ellapsedTime, deltaTime);
-                }
-            }
+        if (!mPreDrawCallbacks.isEmpty()) {
+            for (ASceneFrameCallback callback : mPreDrawCallbacks)
+                callback.onPreDraw(ellapsedTime, deltaTime);
         }
 
 		if (mSkybox != null) {
@@ -1097,18 +1097,15 @@ public class RajawaliScene {
 			sceneMat.bindTextures();
 		}
 
-        synchronized (mChildren) {
-			for (int i = 0, j = mChildren.size(); i < j; ++i) {
-				Object3D child = mChildren.get(i);
-				boolean blendingEnabled = child.isBlendingEnabled();
-				if(pickerInfo != null && child.isPickingEnabled()) {
-					child.setBlendingEnabled(false);
-					pickerInfo.getPicker().getMaterial().setColor(child.getPickingColor());
-				}
-                // Model matrix updates are deferred to the render method due to parent matrix needs
-				child.render(mCamera, mVPMatrix, mPMatrix, mVMatrix, sceneMat);
-				child.setBlendingEnabled(blendingEnabled);
+		for (Object3D child : mChildren) {
+			boolean blendingEnabled = child.isBlendingEnabled();
+			if(pickerInfo != null && child.isPickingEnabled()) {
+				child.setBlendingEnabled(false);
+				pickerInfo.getPicker().getMaterial().setColor(child.getPickingColor());
 			}
+            // Model matrix updates are deferred to the render method due to parent matrix needs
+			child.render(mCamera, mVPMatrix, mPMatrix, mVMatrix, sceneMat);
+			child.setBlendingEnabled(blendingEnabled);
 		}
 		
 		if (mDisplaySceneGraph) {
@@ -1127,10 +1124,8 @@ public class RajawaliScene {
 			render(ellapsedTime, deltaTime, renderTarget, sceneMaterial); //TODO Possible timing error here
 		}
 
-		synchronized (mPlugins) {
-			for (int i = 0, j = mPlugins.size(); i < j; i++)
-				mPlugins.get(i).render();
-		}
+		for (IRendererPlugin plugin : mPlugins)
+			plugin.render();
 		
 		if(renderTarget != null) {
 			renderTarget.unbind();
@@ -1138,12 +1133,9 @@ public class RajawaliScene {
 
         // Execute post-render callbacks
         // We explicitly break out the steps here to help the compiler optimize
-        final int postCount = mPostCallbacks.size();
-        if (postCount > 0) {
-            synchronized (mPostCallbacks) {
-                for (int i = 0; i < postCount; ++i) {
-                    mPostCallbacks.get(i).onPostFrame(ellapsedTime, deltaTime);
-                }
+        if (!mPostCallbacks.isEmpty()) {
+            for (ASceneFrameCallback callback : mPostCallbacks) {
+                callback.onPostFrame(ellapsedTime, deltaTime);
             }
         }
 	}
@@ -1155,9 +1147,7 @@ public class RajawaliScene {
 	 * @return boolean True on successful addition to queue.
 	 */
 	private boolean internalOfferTask(AFrameTask task) {
-		synchronized (mFrameTaskQueue) {
-			return mFrameTaskQueue.offer(task);
-		}
+		return mFrameTaskQueue.offer(task);
 	}
 	
 	/**
@@ -1165,15 +1155,10 @@ public class RajawaliScene {
 	 * start of onDrawFrame() prior to render().
 	 */
 	private void performFrameTasks() {
-		synchronized (mFrameTaskQueue) {
-			//Fetch the first task
-			AFrameTask task = mFrameTaskQueue.poll();
-			while (task != null) {
-                task.run();
-				//Retrieve the next task
-                task = mFrameTaskQueue.poll();
-			}
-		}
+		AFrameTask task = null;
+
+		while ((task = mFrameTaskQueue.poll()) != null)
+            task.run();
 	}
 	
 	/**
@@ -1227,11 +1212,9 @@ public class RajawaliScene {
      * to be updated on the next render loop.
      */
     public void markLightingDirty() {
-        synchronized (mFrameTaskQueue) {
-            mLightsDirty = true;
-        }
+        mLightsDirty = true;
     }
-	
+
 	/**
 	 * Set the lights on all materials used in this scene. This method
 	 * should only be called when the lights collection is dirty. It will 
@@ -1256,12 +1239,9 @@ public class RajawaliScene {
 			material.setLights(mLights);
 		if(material!= null && mFogParams != null)
 			material.addPlugin(new FogMaterialPlugin(mFogParams));
-		
-		int numChildren = child.getNumChildren();
-		for(int i=0; i<numChildren; i++) {
-			Object3D grandChild = child.getChildAt(i);
+
+		for(Object3D grandChild : child.getChildren())
 			updateChildMaterialWithLights(grandChild);
-		}
 	}
 	
 	/**
@@ -1332,20 +1312,16 @@ public class RajawaliScene {
 	 * Reload all the children
 	 */
 	private void reloadChildren() {
-		synchronized (mChildren) {
-			for (int i = 0, j = mChildren.size(); i < j; ++i)
-				mChildren.get(i).reload();
-		}
+		for (Object3D child : mChildren)
+			child.reload();
 	}
 
 	/**
 	 * Reload all the plugins
 	 */
 	private void reloadPlugins() {
-		synchronized (mPlugins) {
-			for (int i = 0, j = mPlugins.size(); i < j; ++i)
-				mPlugins.get(i).reload();
-		}
+		for (IRendererPlugin plugin : mPlugins)
+			plugin.reload();
 	}
 
 	/**
@@ -1438,9 +1414,9 @@ public class RajawaliScene {
 				m.removePlugin(mShadowMapMaterial.getMaterialPlugin());
 			}
 		}
-		
-		for(int i=0; i<o.getNumChildren(); i++)
-			addShadowMapMaterialPlugin(o.getChildAt(i), materialPlugin);
+
+		for(Object3D child : o.getChildren())
+			addShadowMapMaterialPlugin(child, materialPlugin);
 	}
 	
 	/**
@@ -1460,10 +1436,8 @@ public class RajawaliScene {
 	 */
 	public int getNumTriangles() {
 		int triangleCount = 0;
-		ArrayList<Object3D> children = getChildrenCopy();
-		
-		for (int i = 0, j = children.size(); i < j; i++) {
-			Object3D child = children.get(i);
+
+		for (Object3D child : mChildren) {
 			if (child.getGeometry() != null && child.getGeometry().getVertices() != null && child.isVisible())
 				if (child.getNumChildren() > 0) {
 					triangleCount += child.getNumTriangles();
@@ -1482,10 +1456,8 @@ public class RajawaliScene {
 	 */
 	public int getNumObjects() {
 		int objectCount = 0;
-		ArrayList<Object3D> children = getChildrenCopy();
-		
-		for (int i = 0, j = children.size(); i < j; i++) {
-			Object3D child = children.get(i);
+
+		for (Object3D child : mChildren) {
 			if (child.getGeometry() != null && child.getGeometry().getVertices() != null && child.isVisible())
 				if (child.getNumChildren() > 0) {
 					objectCount += child.getNumObjects() + 1;
