@@ -23,6 +23,7 @@ public abstract class AAnimationObject3D extends Object3D {
 
 	protected Stack<IAnimationFrame> mFrames;
 	protected int mNumFrames;
+	protected int mNumAnims;
 	protected int mCurrentFrameIndex;
 	protected long mStartTime;
 	protected boolean mIsPlaying;
@@ -36,6 +37,7 @@ public abstract class AAnimationObject3D extends Object3D {
 	public AAnimationObject3D() {
 		super();
 		mFrames = new Stack<IAnimationFrame>();
+		mNumAnims = -1;
 	}
 
 	public void setCurrentFrame(int frame) {
@@ -49,6 +51,7 @@ public abstract class AAnimationObject3D extends Object3D {
 	public void addFrame(IAnimationFrame frame) {
 		mFrames.add(frame);
 		mNumFrames++;
+		mNumAnims = -1;
 	}
 
 	public int getNumFrames() {
@@ -63,6 +66,7 @@ public abstract class AAnimationObject3D extends Object3D {
 		mFrames = frames;
 		frames.trimToSize();
 		mNumFrames = frames.capacity();
+		mNumAnims = -1;
 	}
 
 	public void setFrames(IAnimationFrame[] frames) {
@@ -71,6 +75,29 @@ public abstract class AAnimationObject3D extends Object3D {
 			f.add(frames[i]);
 		}
 		setFrames(f);
+	}
+
+	public int getNumAnimations()
+	{
+		if(mNumAnims > -1)
+			return mNumAnims;
+
+		String lastname = null;
+		String curname = null;
+
+		int count = 0;
+
+		for (int i = 0; i < mNumFrames; i++)
+		{
+			curname = mFrames.get(i).getName();
+
+			if(lastname != null && curname != null && !curname.equals(lastname))
+				count++;
+
+			lastname = curname;
+		}
+
+		return (mNumAnims = count);
 	}
 
 	public void play() {
@@ -122,6 +149,34 @@ public abstract class AAnimationObject3D extends Object3D {
 
 	public void play(String name, boolean loop) {
 		play(name);
+		mLoop = loop;
+	}
+
+	public void play(int index)
+	{
+		int cur = -1, i = 0;
+
+		String lastname = null;
+		String curname = null;
+
+		for (i = 0; i < mNumFrames && cur < index; i++)
+		{
+			curname = mFrames.get(i).getName();
+
+			if(lastname == null || !curname.equals(lastname))
+			{
+				lastname = curname;
+				cur++;
+			}
+		}
+
+		if(cur == index)
+			play(mFrames.get(i).getName());
+	}
+
+	public void play(int index, boolean loop)
+	{
+		play(index);
 		mLoop = loop;
 	}
 

@@ -174,6 +174,11 @@ public class SkeletalAnimationObject3D extends AAnimationObject3D {
 		mSequences = sequences;
 	}
 
+	public int getNumAnimations()
+	{
+		return (mSequences == null ? 0 : mSequences.length);
+	}
+
 	/**
 	 * Sets a new {@link SkeletalAnimationSequence}. It will use this one immediately no
 	 * blending will be done.
@@ -182,42 +187,20 @@ public class SkeletalAnimationObject3D extends AAnimationObject3D {
 	 */
 	public void setAnimationSequence(SkeletalAnimationSequence sequence)
 	{
-		mSequence = sequence;
-
 		if (sequence != null && sequence.getFrames() != null)
 		{
+			mSequence = sequence;
+
 			mNumFrames = sequence.getFrames().length;
-			
+
+			setFps((sequence.getFrameRate() <= 0 ? mFps : sequence.getFrameRate()));
+
 			for (Object3D child : mChildren)
 			{
 				if (child instanceof SkeletalAnimationChildObject3D)
 					((SkeletalAnimationChildObject3D) child).setAnimationSequence(sequence);
 			}
 		}
-	}
-
-	public boolean setAnimationSequence(String name)
-	{
-		SkeletalAnimationSequence sequence = getAnimationSequence(name);
-
-		if(sequence == null)
-			return false;
-
-		setAnimationSequence(sequence);
-
-		return true;
-	}
-
-	public boolean setAnimationSequence(int index)
-	{
-		SkeletalAnimationSequence sequence = getAnimationSequence(index);
-
-		if(sequence == null)
-			return false;
-
-		setAnimationSequence(sequence);
-
-		return true;
 	}
 
 	/**
@@ -389,9 +372,10 @@ public class SkeletalAnimationObject3D extends AAnimationObject3D {
 		
 		if(isTransitioning && transitionInterpolation >= .99f)
 		{
+			setAnimationSequence(mNextSequence);
 			isTransitioning = false;
+
 			mCurrentFrameIndex = mCurrentTransitionFrameIndex;
-			mSequence = mNextSequence;
 			mNextSequence = null;
 		}
 
@@ -427,11 +411,54 @@ public class SkeletalAnimationObject3D extends AAnimationObject3D {
 				((AAnimationObject3D) child).play();
 	}
 
+	public void play(String name)
+	{
+		if(name == null)
+			super.play(null);
+		else
+			play(name, false);
+	}
+
+	public void play(String name, boolean loop)
+	{
+		play(getAnimationSequence(name), loop);
+	}
+
+	public void play(int index)
+	{
+		play(index, false);
+	}
+
+	public void play(int index, boolean loop)
+	{
+		play(getAnimationSequence(index), loop);
+	}
+
+	private void play(SkeletalAnimationSequence seq, boolean loop)
+	{
+		if(isPlaying())
+			transitionToAnimationSequence(seq, 1000);
+		else
+		{
+			setAnimationSequence(seq);
+			play();
+		}
+
+		mLoop = loop;
+	}
+
 	@Override
-	public void render(Camera camera, final Matrix4 projMatrix, final Matrix4 vMatrix,
-			final Matrix4 parentMatrix, Material sceneMaterial) {
+	public void render(Camera camera, final Matrix4 vpMatrix, final Matrix4 projMatrix,
+			final Matrix4 vMatrix, final Matrix4 parentMatrix, Material sceneMaterial) {
 		setShaderParams(camera);
-		super.render(camera, projMatrix, vMatrix, parentMatrix, sceneMaterial);
+		super.render(camera, vpMatrix, projMatrix, vMatrix, parentMatrix, sceneMaterial);
+	}
+
+	@Override
+	public void render(Camera camera, final Matrix4 vpMatrix, final Matrix4 projMatrix,
+			final Matrix4 vMatrix, Material sceneMaterial) {
+		setShaderParams(camera);
+		super.render(camera, vpMatrix, projMatrix, vMatrix, sceneMaterial);
 	}
 	
 	@Override
