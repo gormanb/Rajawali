@@ -12,8 +12,9 @@
  */
 package org.rajawali3d.materials.textures;
 
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.rajawali3d.materials.AResourceManager;
@@ -48,8 +49,8 @@ public final class TextureManager extends AResourceManager {
 	 */
 	private TextureManager()
 	{
-		mTextureList = Collections.synchronizedList(new CopyOnWriteArrayList<ATexture>());
-		mRenderers = Collections.synchronizedList(new CopyOnWriteArrayList<RajawaliRenderer>());
+		mTextureList = new CopyOnWriteArrayList<ATexture>();
+		mRenderers = new CopyOnWriteArrayList<RajawaliRenderer>();
 	}
 
 	/**
@@ -94,11 +95,10 @@ public final class TextureManager extends AResourceManager {
 	private void taskAdd(ATexture texture, boolean isUpdatingAfterContextWasLost) {
 		if (!isUpdatingAfterContextWasLost) {
 			// -- check if texture exists already
-			int count = mTextureList.size();
-			for (int i = 0; i < count; i++) {
-				if (mTextureList.get(i).getTextureName().equals(texture.getTextureName())) {
-					if (mTextureList.get(i) != texture)
-						texture.setFrom(mTextureList.get(i));
+			for (ATexture tex : mTextureList) {
+				if (tex.getTextureName().equals(texture.getTextureName())) {
+					if (tex != texture)
+						texture.setFrom(tex);
 					else
 						return;
 				}
@@ -198,17 +198,18 @@ public final class TextureManager extends AResourceManager {
 	 * {@link RajawaliRenderer}.
 	 */
 	public void taskReload() {
-		int len = mTextureList.size();
-		for (int i = 0; i < len; i++) {
-			ATexture texture = mTextureList.get(i);
+		Set<ATexture> removals =
+			new HashSet<ATexture>();
+
+		for (ATexture texture : mTextureList) {
 			if (texture.willRecycle()) {
-				mTextureList.remove(i);
-				i -= 1;
-				len -= 1;
+				removals.add(texture);
 			} else {
 				taskAdd(texture, true);
 			}
 		}
+
+		mTextureList.removeAll(removals);
 	}
 
 	/**
@@ -223,24 +224,27 @@ public final class TextureManager extends AResourceManager {
 	 */
 	public void taskReset() {
 		try {
-			int count = mTextureList.size();
+			Set<ATexture> removals =
+				new HashSet<ATexture>();
 
+			int count = mTextureList.size();
 			int[] textures = new int[count];
-			for (int i = 0; i < count; i++) {
-				ATexture texture = mTextureList.get(i);
+			int cur = 0;
+
+			for (ATexture texture : mTextureList) {
 				if (texture.getOwnerIdentity().equals(mRenderer.getClass().toString()) || texture.willRecycle()) {
 					texture.reset();
-					textures[i] = texture.getTextureId();
-					mTextureList.remove(i);
-					i -= 1;
-					count -= 1;
+					textures[cur++] = texture.getTextureId();
+					removals.add(texture);
 				}
 			}
-			
+
+			mTextureList.removeAll(removals);
+
 			if(RajawaliRenderer.hasGLContext())
 				GLES20.glDeleteTextures(count, textures, 0);
 
-			if (mRenderers.size() > 0) {
+			if (!mRenderers.isEmpty()) {
 				mRenderer = mRenderers.get(mRenderers.size() - 1);
 				reload();
 			} else {
@@ -257,7 +261,7 @@ public final class TextureManager extends AResourceManager {
 	 * @param renderer
 	 */
 	public void taskReset(RajawaliRenderer renderer) {
-		if (mRenderers.size() == 0) {
+		if (mRenderers.isEmpty()) {
 			taskReset();
 		}
 	}

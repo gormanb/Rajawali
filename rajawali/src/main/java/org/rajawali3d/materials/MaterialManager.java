@@ -14,8 +14,9 @@ package org.rajawali3d.materials;
 
 import org.rajawali3d.renderer.RajawaliRenderer;
 
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MaterialManager extends AResourceManager {
@@ -23,8 +24,8 @@ public class MaterialManager extends AResourceManager {
 	private List<Material> mMaterialList;
 	
 	private MaterialManager() {
-		mMaterialList = Collections.synchronizedList(new CopyOnWriteArrayList<Material>());
-		mRenderers = Collections.synchronizedList(new CopyOnWriteArrayList<RajawaliRenderer>());
+		mMaterialList = new CopyOnWriteArrayList<Material>();
+		mRenderers = new CopyOnWriteArrayList<RajawaliRenderer>();
 	}
 	
 	public static MaterialManager getInstance() {
@@ -36,10 +37,9 @@ public class MaterialManager extends AResourceManager {
 	
 	public Material addMaterial(Material material) {
 		if(material == null) return null;
-		for(Material mat : mMaterialList) {
-			if(mat == material)
-				return material;
-		}
+		if(mMaterialList.contains(material))
+			return material;
+
 		mRenderer.addMaterial(material);
 		mMaterialList.add(material);
 		return material;
@@ -65,12 +65,8 @@ public class MaterialManager extends AResourceManager {
 	}
 	
 	public void taskReload() {
-		int len = mMaterialList.size();
-		for (int i = 0; i < len; i++)
-		{
-			Material material = mMaterialList.get(i);
+		for (Material material : mMaterialList)
 			material.reload();
-		}
 	}
 	
 	public void reset() {
@@ -78,19 +74,20 @@ public class MaterialManager extends AResourceManager {
 	}
 	
 	public void taskReset() {
-		int count = mMaterialList.size();
-		
-		for(int i=0; i<count; i++) {
-			Material material = mMaterialList.get(i);
-			
+		Set<Material> removals =
+			new HashSet<Material>();
+
+		for(Material material : mMaterialList) {
 			if(material.getOwnerIdentity() != null && material.getOwnerIdentity().equals(mRenderer.getClass().toString())) {
-				material.remove();
-				mMaterialList.remove(i);
-				i -= 1;
-				count -= 1;							
+				removals.add(material);
 			}			
 		}
-		
+
+		for(Material material : removals)
+			material.remove();
+
+		mMaterialList.removeAll(removals);
+
 		if (mRenderers.size() > 0) {
 			mRenderer = mRenderers.get(mRenderers.size() - 1);
 			reload();

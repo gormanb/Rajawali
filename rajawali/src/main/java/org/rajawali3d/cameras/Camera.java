@@ -185,9 +185,7 @@ public class Camera extends ATransformable3D {
 	}
 	
 	public void updateFrustum(Matrix4 invVPMatrix) {
-		synchronized (mFrustumLock) {
-			mFrustum.update(invVPMatrix);
-		}
+		mFrustum.update(invVPMatrix);
 	}
 	
 	public Frustum getFrustum() {
@@ -294,10 +292,8 @@ public class Camera extends ATransformable3D {
 	 */
 	@Override
 	public IBoundingVolume getTransformedBoundingVolume() {
-		synchronized (mFrustumLock) {
-			// TODO create an actual bounding box
-			return mBoundingBox;
-		}
+		// TODO create an actual bounding box
+		return mBoundingBox;
 	}
 	
 	public Camera clone() {

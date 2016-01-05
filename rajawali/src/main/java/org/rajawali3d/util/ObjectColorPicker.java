@@ -15,6 +15,7 @@ package org.rajawali3d.util;
 import android.graphics.Bitmap.Config;
 import android.graphics.Color;
 import android.opengl.GLES20;
+import android.util.SparseArray;
 
 import org.rajawali3d.Object3D;
 import org.rajawali3d.materials.Material;
@@ -26,11 +27,10 @@ import org.rajawali3d.renderer.RenderTarget;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 
 public class ObjectColorPicker implements IObjectPicker {
 
-	private final ArrayList<Object3D> mObjectLookup = new ArrayList<>();
+	private final SparseArray<Object3D> mObjectLookup = new SparseArray<Object3D>();
 	private final RajawaliRenderer mRenderer;
 
 	private int mColorIndex = 0;
@@ -60,16 +60,15 @@ public class ObjectColorPicker implements IObjectPicker {
 	}
 
 	public void registerObject(Object3D object) {
-		if (!mObjectLookup.contains(object)) {
-			mObjectLookup.add(object);
+		if (mObjectLookup.indexOfValue(object) < 0) {
 			object.setPickingColor(mColorIndex);
-			++mColorIndex;
+			mObjectLookup.put(mColorIndex++, object);
 		}
 	}
 
 	public void unregisterObject(Object3D object) {
-		if (mObjectLookup.contains(object)) {
-			mObjectLookup.remove(object);
+		if (mObjectLookup.indexOfValue(object) >= 0) {
+			mObjectLookup.remove(object.getPickingColor());
 		}
 	}
 
@@ -98,7 +97,7 @@ public class ObjectColorPicker implements IObjectPicker {
 		final int a = pixelBuffer.get(3) & 0xff;
 		final int index = Color.argb(a, r, g, b);
 
-		if (0 <= index && index < picker.mObjectLookup.size() && picker.mObjectPickedListener != null)
+		if (index >= 0 && picker.mObjectPickedListener != null && picker.mObjectLookup.indexOfKey(index) >= 0)
 			picker.mObjectPickedListener.onObjectPicked(picker.mObjectLookup.get(index));
 	}
 

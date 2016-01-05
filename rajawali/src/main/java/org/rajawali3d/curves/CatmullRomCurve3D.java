@@ -12,7 +12,7 @@
  */
 package org.rajawali3d.curves;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -41,7 +41,7 @@ public class CatmullRomCurve3D implements ICurve3D {
 	private Vector3 mTempPointLen = new Vector3();
 	
 	public CatmullRomCurve3D() {
-		mPoints = Collections.synchronizedList(new CopyOnWriteArrayList<Vector3>());
+		mPoints = new CopyOnWriteArrayList<Vector3>();
 		mCurrentTangent = new Vector3();
 		mCurrentPoint = new Vector3();
 	}
@@ -86,16 +86,18 @@ public class CatmullRomCurve3D implements ICurve3D {
 
 	public int selectPoint(Vector3 point) {
 		double minDist = Double.MAX_VALUE;
-		mSelectedIndex = -1;
-		for (int i = 0; i < mNumPoints; i++) {
-			Vector3 p = mPoints.get(i);
+
+		Vector3 selected = null;
+
+		for (Vector3 p : mPoints) {
 			double distance = pow2(p.x - point.x) + pow2(p.y - point.y) + pow2(p.z - point.z);
 			if (distance < minDist && distance < EPSILON) {
 				minDist = distance;
-				mSelectedIndex = i;
+				selected = p;
 			}
 		}
-		return mSelectedIndex;
+
+		return mPoints.indexOf(selected);
 	}
 
 	public void setCalculateTangents(boolean calculateTangents) {
@@ -212,7 +214,7 @@ public class CatmullRomCurve3D implements ICurve3D {
 		double segmentDistance = curveLength / resolution;
 		double numSegments = mSegmentLengths.length;
 
-		List<Vector3> newPoints = Collections.synchronizedList(new CopyOnWriteArrayList<Vector3>());
+		List<Vector3> newPoints = new ArrayList<Vector3>();
 		// -- add first control point
 		newPoints.add(mPoints.get(0));
 		// -- add first point

@@ -12,7 +12,6 @@
  */
 package org.rajawali3d.materials.textures;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -160,7 +159,7 @@ public abstract class ATexture {
 	}
 	
 	protected ATexture() {
-		mMaterialsUsingTexture = Collections.synchronizedList(new CopyOnWriteArrayList<Material>());
+		mMaterialsUsingTexture = new CopyOnWriteArrayList<Material>();
 	}
 
 	/**
@@ -418,15 +417,9 @@ public abstract class ATexture {
 	public boolean unregisterMaterial(Material material) {
 		return mMaterialsUsingTexture.remove(material);
 	}
-	
+
 	private boolean isMaterialRegistered(Material material) {
-		int count = mMaterialsUsingTexture.size();
-		for(int i=0; i<count; i++)
-		{
-			if(mMaterialsUsingTexture.get(i) == material)
-				return true;
-		}
-		return false;
+		return mMaterialsUsingTexture.contains(material);
 	}
 	
 	public void setInfluence(float influence)

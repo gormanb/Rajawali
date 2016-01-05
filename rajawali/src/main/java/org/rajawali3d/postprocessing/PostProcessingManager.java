@@ -28,7 +28,6 @@ import org.rajawali3d.renderer.RenderTarget;
 import org.rajawali3d.scene.RajawaliScene;
 import org.rajawali3d.scenegraph.IGraphNode.GRAPH_TYPE;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -81,8 +80,8 @@ public class PostProcessingManager {
 		mReadBuffer = mRenderTarget2;
 
 		mCopyPass = new EffectPass(new CopyPass());
-		mComponents = Collections.synchronizedList(new CopyOnWriteArrayList<IPostProcessingComponent>());
-		mPasses = Collections.synchronizedList(new CopyOnWriteArrayList<IPass>());
+		mComponents = new CopyOnWriteArrayList<IPostProcessingComponent>();
+		mPasses = new CopyOnWriteArrayList<IPass>();
 
 		mRenderer.addRenderTarget(mWriteBuffer);
 		mRenderer.addRenderTarget(mReadBuffer);
@@ -161,11 +160,10 @@ public class PostProcessingManager {
 		mReadBuffer = mRenderTarget2;
 		
 		boolean maskActive = false;
+		int i = 0;
 
-		IPass pass;
+		for (IPass pass : mPasses) {
 
-		for (int i = 0; i < mNumPasses; i++) {
-			pass = mPasses.get(i);
 			if (!pass.isEnabled())
 				continue;
 
@@ -191,6 +189,8 @@ public class PostProcessingManager {
 				maskActive = true;
 			else if (type == PassType.CLEAR)
 				maskActive = false;
+
+			i++;
 		}
 	}
 	
@@ -202,9 +202,8 @@ public class PostProcessingManager {
 	{
 		mPasses.clear();
 		
-		for(int i=0; i<mComponents.size(); i++)
+		for(IPostProcessingComponent component : mComponents)
 		{
-			IPostProcessingComponent component = mComponents.get(i);
 			if(component.getType() == PostProcessingComponentType.PASS)
 			{
 				mPasses.add((IPass)component);

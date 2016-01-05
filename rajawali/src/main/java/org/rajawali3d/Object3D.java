@@ -95,7 +95,7 @@ public class Object3D extends ATransformable3D implements Comparable<Object3D>, 
 
 	public Object3D() {
 		super();
-		mChildren = Collections.synchronizedList(new CopyOnWriteArrayList<Object3D>());
+		mChildren = new CopyOnWriteArrayList<Object3D>();
 		mGeometry = new Geometry3D();
 		mColor = new float[] { 0, 1, 0, 1.0f};
 	}
@@ -348,8 +348,8 @@ public class Object3D extends ATransformable3D implements Comparable<Object3D>, 
 			mGeometry.reload();
 		}
 
-		for (int i = 0, j = mChildren.size(); i < j; i++)
-			mChildren.get(i).reload();
+		for (Object3D child : mChildren)
+			child.reload();
 
 		if (mGeometry.hasBoundingBox() && mGeometry.getBoundingBox().getVisual() != null)
 			mGeometry.getBoundingBox().getVisual().reload();
@@ -510,6 +510,11 @@ public class Object3D extends ATransformable3D implements Comparable<Object3D>, 
 		return objectCount;
 	}
 
+	public List<Object3D> getChildren()
+	{
+		return mChildren;
+	}
+
 	public int getNumChildren() {
 		return mChildren.size();
 	}
@@ -519,9 +524,11 @@ public class Object3D extends ATransformable3D implements Comparable<Object3D>, 
 	}
 
 	public Object3D getChildByName(String name) {
-		for (int i = 0, j = mChildren.size(); i < j; i++)
-			if (mChildren.get(i).getName().equals(name))
-				return mChildren.get(i);
+		for (Object3D child : mChildren)
+		{
+			if (child.getName().equals(name))
+				return child;
+		}
 
 		return null;
 	}
@@ -750,8 +757,8 @@ public class Object3D extends ATransformable3D implements Comparable<Object3D>, 
 			MaterialManager.getInstance().removeMaterial(mMaterial);
 		mMaterial = null;
 		mGeometry = null;
-		for (int i = 0, j = mChildren.size(); i < j; i++)
-			mChildren.get(i).destroy();
+		for (Object3D child : mChildren)
+			child.destroy();
 		mChildren.clear();
 	}
 

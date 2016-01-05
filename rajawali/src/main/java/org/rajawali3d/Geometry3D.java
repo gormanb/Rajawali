@@ -272,6 +272,10 @@ public class Geometry3D {
 		this.mOriginalGeometry = geom;
 		this.mHasNormals = geom.hasNormals();
 		this.mHasTextureCoordinates = geom.hasTextureCoordinates();
+
+		this.mVertices = geom.mVertices;
+		this.mIndicesInt = geom.mIndicesInt;
+		this.mIndicesShort = geom.mIndicesShort;
 	}
 	
 	/**
@@ -354,7 +358,7 @@ public class Geometry3D {
 		mIndicesShort = null;
 		setIndices(newIntIndices);
 
-        if (createVBOs) {
+		if (createVBOs) {
             //Create the new buffers
             createBuffers();
         }
@@ -391,7 +395,7 @@ public class Geometry3D {
 		
 		mOriginalGeometry = null;
 
-        if (createVBOs) {
+		if (createVBOs) {
             createBuffers();
         }
 	}
@@ -472,7 +476,7 @@ public class Geometry3D {
 			setColors(colors);
 		setIndices(indices);
 
-        if (createVBOs) {
+		if (createVBOs) {
             createBuffers();
         }
 	}

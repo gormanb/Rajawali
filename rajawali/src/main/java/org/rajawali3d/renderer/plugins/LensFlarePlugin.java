@@ -15,6 +15,7 @@ package org.rajawali3d.renderer.plugins;
 import android.opengl.GLES20;
 
 import java.util.Stack;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.rajawali3d.cameras.Camera;
 import org.rajawali3d.extras.LensFlare;
@@ -340,138 +341,135 @@ public final class LensFlarePlugin extends Plugin {
 		Vector3 cameraDirection = cameraLookAt.clone().subtract(cameraPosition);
 		cameraDirection.normalize();
 		
-		synchronized (mLensFlares) {
-			for (i = 0; i < numLensFlares; i++) {
-				size = 16 / viewportHeight;
-				scale.setX(size * invAspect);
-				scale.setY(size);
+		for (LensFlare lensFlare : mLensFlares) {
+			size = 16 / viewportHeight;
+			scale.setX(size * invAspect);
+			scale.setY(size);
+
+			// Calculate normalized device coordinates.
+			screenPosition.setAll(lensFlare.getPosition().clone());
+			screenPosition.multiply(viewMatrix);
+			screenPosition.project(projMatrix);
+			
+			// Calculate actual device coordinates.
+			screenPositionPixels_x = screenPosition.x * halfViewportWidth + halfViewportWidth;
+			screenPositionPixels_y = screenPosition.y * halfViewportHeight + halfViewportHeight;
+			
+			// Calculate the angle between the camera and the light vector.
+			Vector3 lightToCamDirection = lensFlare.getPosition().clone().subtract(cameraPosition);
+			lightToCamDirection.normalize();
+			double angleLightCamera = lightToCamDirection.dot(cameraDirection);
+			
+			// Camera needs to be facing towards the light and the light should come within the
+			// viewing frustum.
+			if (mVertexTextureSupported || (angleLightCamera > 0 &&
+					screenPositionPixels_x > -64 && screenPositionPixels_x < viewportWidth + 64 &&
+					screenPositionPixels_y > -64 && screenPositionPixels_y < viewportHeight + 64)) {
+				// Bind current framebuffer to texture.
+				GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
+				GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGB, 
+						(int)screenPositionPixels_x - 8, (int)screenPositionPixels_y - 8, 16, 16, 0);
 				
-				LensFlare lensFlare = mLensFlares.get(i);
+				// First render pass.
+				GLES20.glUniform1i(muRenderTypeHandle, 1);
+				GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (float) scale.getX(), (float) scale.getY() }, 0);
+				GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { (float) screenPosition.x, (float) screenPosition.y, (float) screenPosition.z }, 0);
 				
-				// Calculate normalized device coordinates.
-				screenPosition.setAll(lensFlare.getPosition().clone());
-				screenPosition.multiply(viewMatrix);
-				screenPosition.project(projMatrix);
+				GLES20.glDisable(GLES20.GL_BLEND);
+				GLES20.glEnable(GLES20.GL_DEPTH_TEST);
 				
-				// Calculate actual device coordinates.
-				screenPositionPixels_x = screenPosition.x * halfViewportWidth + halfViewportWidth;
-				screenPositionPixels_y = screenPosition.y * halfViewportHeight + halfViewportHeight;
+				GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, 
+						mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 
+						0);
 				
-				// Calculate the angle between the camera and the light vector.
-				Vector3 lightToCamDirection = lensFlare.getPosition().clone().subtract(cameraPosition);
-				lightToCamDirection.normalize();
-				double angleLightCamera = lightToCamDirection.dot(cameraDirection);
+				// Copy result to occlusion map.
+				GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mOcclusionMapTexture.getTextureId());
+				GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 
+						(int)screenPositionPixels_x - 8, (int)screenPositionPixels_y - 8, 16, 16, 0);
 				
-				// Camera needs to be facing towards the light and the light should come within the
-				// viewing frustum.
-				if (mVertexTextureSupported || (angleLightCamera > 0 &&
-						screenPositionPixels_x > -64 && screenPositionPixels_x < viewportWidth + 64 &&
-						screenPositionPixels_y > -64 && screenPositionPixels_y < viewportHeight + 64)) {
-					// Bind current framebuffer to texture.
-					GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
-					GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGB, 
-							(int)screenPositionPixels_x - 8, (int)screenPositionPixels_y - 8, 16, 16, 0);
-					
-					// First render pass.
-					GLES20.glUniform1i(muRenderTypeHandle, 1);
-					GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (float) scale.getX(), (float) scale.getY() }, 0);
-					GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { (float) screenPosition.x, (float) screenPosition.y, (float) screenPosition.z }, 0);
-					
-					GLES20.glDisable(GLES20.GL_BLEND);
-					GLES20.glEnable(GLES20.GL_DEPTH_TEST);
-					
-					GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, 
-							mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 
-							0);
-					
-					// Copy result to occlusion map.
-					GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mOcclusionMapTexture.getTextureId());
-					GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 
-							(int)screenPositionPixels_x - 8, (int)screenPositionPixels_y - 8, 16, 16, 0);
-					
-					// Second render pass.
-					GLES20.glUniform1i(muRenderTypeHandle, 2);
-					GLES20.glDisable(GLES20.GL_DEPTH_TEST);
-					
-					GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
-					GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, 
-							mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 
-							0);
-					
-					// Update the flare's screen positions.
-					lensFlare.setPositionScreen(screenPosition);
-					lensFlare.updateLensFlares();
-					
-					// Third render pass.
-					GLES20.glUniform1i(muRenderTypeHandle, 3);
-					GLES20.glEnable(GLES20.GL_BLEND);
-					
-					// DEBUG - Shows the current uMap and uOcclusionMap textures on screen.
-					// NOTE: UNCOMMENT IF THE LENS FLARE DOES NOT GET OCCLUDED.
-					// IF THE OCCLUSION TEXTURE IS EMPTY, YOU ARE USING RGB_565 IN YOUR EGL CONFIG.
-					// SWITCH TO RGBA_8888.
-					/*
-					GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { -0.75f, -0.35f, 0 }, 0);
-					GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (200 / viewportHeight) * invAspect, 200 / viewportHeight }, 0);
-					GLES20.glUniform1f(muRotationHandle, 0);
-					GLES20.glUniform1i(muDebugModeHandle, 1);
-					GLES20.glUniform1f(muOpacityHandle, 1);
-					GLES20.glUniform3fv(muColorHandle, 1, new float[] { 1, 1, 1 }, 0);
-					GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
-					fix.android.opengl.GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-					GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-					GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { -0.3f, -0.35f, 0 }, 0);
-					GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mOcclusionMapTexture.getTextureId());
-					fix.android.opengl.GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
-					GLES20.glUniform1i(muDebugModeHandle, 0);
-					GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-					GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-					*/
-					// END DEBUG
-					
-					for (f = 0; f < lensFlare.getLensFlares().size(); f++) {
-						FlareInfo sprite = lensFlare.getLensFlares().get(f);
-						// Don't bother rendering if the sprite's too transparent or too small.
-						if (sprite.getOpacity() > 0.001 && sprite.getScale() > 0.001) {
-							screenPosition.setAll(sprite.getScreenPosition());
-							
-							// Calculate pixel size to normalized size
-							size = sprite.getSize() * sprite.getScale() / viewportHeight;
-							
-							scale.setX(size * invAspect);
-							scale.setY(size);
-							
-							GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { (float) screenPosition.x, (float) screenPosition.y, (float) screenPosition.z }, 0);
-							GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (float) scale.getX(), (float) scale.getY() }, 0);
-							GLES20.glUniform1f(muRotationHandle, (float) sprite.getRotation());
-							
-							GLES20.glUniform1f(muOpacityHandle, (float) sprite.getOpacity());
-							GLES20.glUniform3fv(muColorHandle, 1, new float[] { (float) sprite.getColor().x, (float) sprite.getColor().y, (float) sprite.getColor().z }, 0);
-							
-							GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-							GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, sprite.getTexture().getTextureId());
-							
-							//GLES20.glBlendEquation(GLES20.GL_FUNC_ADD);
-							GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE);
-							
-							// Draw the elements.
-							GLES20.glDrawElements(GLES20.GL_TRIANGLES, mGeometry.getNumIndices(),
-									mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
-							
-							// Unbind texture.
-							GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-							GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
-						}
+				// Second render pass.
+				GLES20.glUniform1i(muRenderTypeHandle, 2);
+				GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+				
+				GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
+				GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, 
+						mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 
+						0);
+				
+				// Update the flare's screen positions.
+				lensFlare.setPositionScreen(screenPosition);
+				lensFlare.updateLensFlares();
+				
+				// Third render pass.
+				GLES20.glUniform1i(muRenderTypeHandle, 3);
+				GLES20.glEnable(GLES20.GL_BLEND);
+				
+				// DEBUG - Shows the current uMap and uOcclusionMap textures on screen.
+				// NOTE: UNCOMMENT IF THE LENS FLARE DOES NOT GET OCCLUDED.
+				// IF THE OCCLUSION TEXTURE IS EMPTY, YOU ARE USING RGB_565 IN YOUR EGL CONFIG.
+				// SWITCH TO RGBA_8888.
+				/*
+				GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { -0.75f, -0.35f, 0 }, 0);
+				GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (200 / viewportHeight) * invAspect, 200 / viewportHeight }, 0);
+				GLES20.glUniform1f(muRotationHandle, 0);
+				GLES20.glUniform1i(muDebugModeHandle, 1);
+				GLES20.glUniform1f(muOpacityHandle, 1);
+				GLES20.glUniform3fv(muColorHandle, 1, new float[] { 1, 1, 1 }, 0);
+				GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mMapTexture.getTextureId());
+				fix.android.opengl.GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+				GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+				GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { -0.3f, -0.35f, 0 }, 0);
+				GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mOcclusionMapTexture.getTextureId());
+				fix.android.opengl.GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
+				GLES20.glUniform1i(muDebugModeHandle, 0);
+				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+				GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+				*/
+				// END DEBUG
+				
+				for (f = 0; f < lensFlare.getLensFlares().size(); f++) {
+					FlareInfo sprite = lensFlare.getLensFlares().get(f);
+					// Don't bother rendering if the sprite's too transparent or too small.
+					if (sprite.getOpacity() > 0.001 && sprite.getScale() > 0.001) {
+						screenPosition.setAll(sprite.getScreenPosition());
+						
+						// Calculate pixel size to normalized size
+						size = sprite.getSize() * sprite.getScale() / viewportHeight;
+						
+						scale.setX(size * invAspect);
+						scale.setY(size);
+						
+						GLES20.glUniform3fv(muScreenPositionHandle, 1, new float[] { (float) screenPosition.x, (float) screenPosition.y, (float) screenPosition.z }, 0);
+						GLES20.glUniform2fv(muScaleHandle, 1, new float[] { (float) scale.getX(), (float) scale.getY() }, 0);
+						GLES20.glUniform1f(muRotationHandle, (float) sprite.getRotation());
+						
+						GLES20.glUniform1f(muOpacityHandle, (float) sprite.getOpacity());
+						GLES20.glUniform3fv(muColorHandle, 1, new float[] { (float) sprite.getColor().x, (float) sprite.getColor().y, (float) sprite.getColor().z }, 0);
+						
+						GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+						GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, sprite.getTexture().getTextureId());
+						
+						//GLES20.glBlendEquation(GLES20.GL_FUNC_ADD);
+						GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE);
+						
+						// Draw the elements.
+						GLES20.glDrawElements(GLES20.GL_TRIANGLES, mGeometry.getNumIndices(),
+								mGeometry.areOnlyShortBuffersSupported() ? GLES20.GL_UNSIGNED_SHORT : GLES20.GL_UNSIGNED_INT, 0);
+						
+						// Unbind texture.
+						GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+						GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
 					}
 				}
 			}
 		}
+
 		// Unbind element array.
 		GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0);
 		GLES20.glEnable(GLES20.GL_CULL_FACE);

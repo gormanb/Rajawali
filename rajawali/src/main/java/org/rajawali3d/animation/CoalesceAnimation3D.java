@@ -42,8 +42,8 @@ public class CoalesceAnimation3D extends Animation3D {
      *                                         item in the animation list.
      */
     public CoalesceAnimation3D(CoalesceConfig rootConfig) {
-        mCoalesceObjects = Collections.synchronizedList(new CopyOnWriteArrayList<CoalesceConfig>());
-        mThetaRanges = Collections.synchronizedList(new CopyOnWriteArrayList<Double>());
+        mCoalesceObjects = new CopyOnWriteArrayList<CoalesceConfig>();
+        mThetaRanges = new CopyOnWriteArrayList<Double>();
         mTransformable3D = rootConfig.object;
         mCoalesceObjects.add(rootConfig);
         mThetaRanges.add(rootConfig.spiral.calculateThetaForRadius(rootConfig.endProximity));
@@ -73,20 +73,15 @@ public class CoalesceAnimation3D extends Animation3D {
 
     @Override
     protected void applyTransformation() {
-        synchronized (mCoalesceObjects) {
-            synchronized (mThetaRanges) {
-                int i;
-                final int j = mCoalesceObjects.size();
-                for (i = 0; i < j; ++i) {
-                    // Retrieve the configuration
-                    CoalesceConfig config = mCoalesceObjects.get(i);
-                    double theta = mThetaRanges.get(i) * mInterpolatedTime;
-                    // Calculate the next point
-                    config.spiral.calculatePoint(config.object.getPosition(), theta);
-                    // Add the coalesce point to translate our spiral
-                    config.object.getPosition().add(config.coalesceAroundPoint);
-                }
-            }
+        int i = 0;
+
+        for (CoalesceConfig config : mCoalesceObjects) {
+            // Retrieve the configuration
+            double theta = mThetaRanges.get(i++) * mInterpolatedTime;
+            // Calculate the next point
+            config.spiral.calculatePoint(config.object.getPosition(), theta);
+            // Add the coalesce point to translate our spiral
+            config.object.getPosition().add(config.coalesceAroundPoint);
         }
     }
 
