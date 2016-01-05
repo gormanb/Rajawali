@@ -232,9 +232,9 @@ public class Plane extends Object3D {
 
 				if (mCreateTextureCoords) {
 					float u = (float) i / (float) mSegmentsW;
-					textureCoords[texCoordCount++] = (1.0f - u) * mNumTextureTiles;
+					textureCoords[texCoordCount++] = u * mNumTextureTiles;
 					float v = (float) j / (float) mSegmentsH;
-					textureCoords[texCoordCount++] = (1.0f - v) * mNumTextureTiles;
+					textureCoords[texCoordCount++] = (mUpAxis == Axis.Y ? v : (1.0f - v)) * mNumTextureTiles;
 				}
 
 				normals[vertexCount] = mUpAxis == Axis.X ? 1 : 0;
@@ -255,23 +255,13 @@ public class Plane extends Object3D {
 				int ur = (col + 1) * colspan + row;
 				int lr = ur + 1;
 
-                if (mUpAxis == Axis.X || mUpAxis == Axis.Z) {
-                    indices[indexCount++] = (int) ur;
-                    indices[indexCount++] = (int) lr;
-                    indices[indexCount++] = (int) ul;
+                indices[indexCount++] = (int) ur;
+                indices[indexCount++] = (int) lr;
+                indices[indexCount++] = (int) ul;
 
-                    indices[indexCount++] = (int) lr;
-                    indices[indexCount++] = (int) ll;
-                    indices[indexCount++] = (int) ul;
-                } else {
-                    indices[indexCount++] = (int) ur;
-                    indices[indexCount++] = (int) ul;
-                    indices[indexCount++] = (int) lr;
-
-                    indices[indexCount++] = (int) lr;
-                    indices[indexCount++] = (int) ul;
-                    indices[indexCount++] = (int) ll;
-                }
+                indices[indexCount++] = (int) lr;
+                indices[indexCount++] = (int) ll;
+                indices[indexCount++] = (int) ul;
 			}
 		}
 
